@@ -10,8 +10,8 @@ local showSensorValues = false
 function M.init_OLED(sda,scl) --Set up the u8glib lib
      sla = 0x3c
      i2c.setup(0, sda, scl, i2c.SLOW)
-     disp = u8g.sh1106_128x64_i2c(sla)
-     disp:setRot180()
+     disp = u8g.ssd1306_128x64_i2c(sla)
+     --disp:setRot180()
      disp:setFont(u8g.font_6x10)
      disp:setFontRefHeightExtendedText()
      disp:setDefaultForegroundColor()
@@ -72,7 +72,7 @@ function M.showSensorValues()
      
      sensors = LeweiMqtt.getSensorValues()
      disp:firstPage()
-     
+     disp:drawStr(0,0,"PMS5003")
      repeat
      local posX = 5
      local posY = 20

@@ -9,6 +9,7 @@ local uartTimer = tmr.create()
 local rcv = ""
 bIsPms5003 = false
 bIsPms5003s = false
+bIsPms5003t = false
 bExistSi7021 = false
 
 
@@ -21,12 +22,16 @@ function M.stopAllOutPut()
        function(data)
           --print("uart restored")
        end, 1)
+     gpio.mode(0, gpio.OUTPUT)  
+     gpio.write(0,gpio.HIGH)
 end
 
 function M.startAllOutPut()
      print("startAllOutPut")
      gpio.mode(enablePMSPin,gpio.OUTPUT)
      gpio.write(enablePMSPin,gpio.HIGH)
+     gpio.mode(0, gpio.OUTPUT)  
+     --gpio.write(0,gpio.LOW)
 end
 
 function M.detectSi7021()
@@ -35,25 +40,25 @@ function M.detectSi7021()
 	SDA_PIN = 5 -- sda pin
 	SCL_PIN = 6 -- scl pin
 	
-	si7021.init(SDA_PIN, SCL_PIN)
-	si7021.read(OSS)
-	Hum = si7021.getHumidity()
-	Temp = si7021.getTemperature()
+	--si7021.init(SDA_PIN, SCL_PIN)
+	--si7021.read(OSS)
+	--Hum = si7021.getHumidity()
+	--Temp = si7021.getTemperature()
 	--print(Temp)
-	if(Temp~=nil)then
-		LeweiMqtt.appendSensorValue("H1",Hum)
-          LeweiMqtt.appendSensorValue("T1",Temp)
-          OLED.showSensorValues()
-		bExistSi7021 = true	
-     else
-          si7021 = nil
-	end
+	--if(Temp~=nil)then
+		--LeweiMqtt.appendSensorValue("H1",Hum)
+          --LeweiMqtt.appendSensorValue("T1",Temp)
+          --OLED.showSensorValues()
+		--bExistSi7021 = true	
+     --else
+          --si7021 = nil
+	--end
 end
 
 function M.detectSensor()
           si7021Timer = tmr.create()
-          si7021Timer:register(2000, tmr.ALARM_AUTO, function()
-               M.detectSi7021()
+          si7021Timer:register(20000, tmr.ALARM_AUTO, function()
+               --M.detectSi7021()
           end)
           si7021Timer:start()
           OLED.init_OLED(1,2)
@@ -85,17 +90,28 @@ end
 function M.resolveData(data)
      --print("resolveData"..data)
      --Socket.send(data)
+     gpio.write(0,gpio.LOW)
      if((((string.byte(data,1)==0x42) and(string.byte(data,2)==0x4d)) or ((string.byte(data,1)==0x32) and(string.byte(data,2)==0x3d))) and string.byte(data,13)~=nil and string.byte(data,14)~=nil)  then
           
           if((string.byte(data,1)==0x32) and(string.byte(data,2)==0x3d)) then
                --Teetc.com
                pm25 = (string.byte(data,7)*256+string.byte(data,8))
           else
+               pm10 = (string.byte(data,11)*256+string.byte(data,12))
                pm25 = (string.byte(data,13)*256+string.byte(data,14))
+               pm100 = (string.byte(data,15)*256+string.byte(data,16))
                if(string.byte(data,29) ~=nil and string.byte(data,30)~=nil)then
-                    if(string.byte(data,29) == 0x71)then
+                   --if(string.byte(data,29) == 0x71)then
+                    if(string.byte(data,29) ~= 0xE1)then
                          hcho = nil
-                         bIsPms5003 = true
+                         if(string.byte(data,29) ~= 0x71)then
+                             bIsPms5003 = true
+                         else
+                             bIsPms5003t = true
+                             Hum = (string.byte(data,25)*256+string.byte(data,26))/10
+                             Temp = (string.byte(data,27)*256+string.byte(data,28))/10
+                             --OLED.showInfo("pm5003t:"..pm25,2)
+                         end
                          bIsPms5003s = false
                          --OLED.showInfo("pm5003:"..pm25,2)
                     else
@@ -110,14 +126,21 @@ function M.resolveData(data)
                end
           end
           aqi,result = M.calcAQI(pm25)
+          if(bIsPms5003t) then
+              LeweiMqtt.appendSensorValue("H1",Hum)                   
+              LeweiMqtt.appendSensorValue("T1",Temp)          
+          end
           LeweiMqtt.appendSensorValue("dust",pm25)
           LeweiMqtt.appendSensorValue("AQI",aqi)
+          LeweiMqtt.appendSensorValue("PM1.0",pm10)
+          LeweiMqtt.appendSensorValue("PM10",pm100)
+
           OLED.showSensorValues()
           --OLED.showInfo("pm5003s:",2)
      else
           OLED.showInfo("No Sensor Recognised",2)
      end
-     
+     gpio.write(0,gpio.HIGH)
 end
 
 function M.enablUart()
